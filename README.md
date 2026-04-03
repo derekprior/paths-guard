@@ -23,6 +23,13 @@ workflow's trigger configuration.
 Add `paths-guard` as an early step in your workflow. It requires
 `actions/checkout` to have run first (so it can read your workflow file).
 
+### Cancel the workflow (default)
+
+By default, when the changed files don't match the path filters, `paths-guard`
+cancels the workflow run via the GitHub API. The workflow appears as "cancelled"
+in the UI — a clear signal that the run was stopped because it shouldn't have
+triggered.
+
 ```yaml
 name: CI
 on:
@@ -40,30 +47,73 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: derekprior/paths-guard@v1
-        id: guard
-      # Subsequent steps only run if paths matched
-      - if: steps.guard.outputs.should_run == 'true'
-        run: npm test
+      - run: npm test
 ```
 
-When the changed files don't match the path filters, `paths-guard` cancels the
-workflow run and sets `should_run` to `false`. The workflow appears as
-"cancelled" in the GitHub UI — a clear signal that the run was stopped because
-it shouldn't have triggered.
+### Control downstream jobs with `cancel: false`
+
+Set `cancel: false` to skip cancellation and instead use the `should_run` output
+to gate downstream jobs. This is useful when you want skipped jobs to appear as
+neutral/skipped rather than cancelled, or when you need to run cleanup steps
+regardless of the path match result.
+
+```yaml
+name: CI
+on:
+  push:
+    paths:
+      - "src/**"
+      - "package.json"
+
+permissions:
+  actions: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: derekprior/paths-guard@v1
+        id: check
+        with:
+          cancel: false
+
+  build:
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+
+  deploy:
+    needs: [guard, build]
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Deploying..."
+```
+
+When `build` and `deploy` are skipped because of the `if:` condition, they
+appear as skipped (neutral) in the GitHub UI. If they are required status checks,
+GitHub treats skipped checks as passing by default.
 
 ## Inputs
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `token` | GitHub token with `actions: write` permission | `${{ github.token }}` |
-| `workflow-file` | Explicit workflow file path (relative to repo root). Auto-detected if not set. | Auto-detected |
-| `fallback` | Behavior when changed files can't be determined: `run` or `cancel` | `run` |
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `token` | GitHub token used to query changed files and cancel the workflow run. Requires `actions: write` permission to cancel. | Yes | `${{ github.token }}` |
+| `workflow-file` | Explicit path to the workflow file (relative to repo root). If not set, automatically resolved from `GITHUB_WORKFLOW_REF`. | No | Auto-detected |
+| `cancel` | Whether to cancel the workflow run when path filters don't match. Set to `false` to only set the `should_run` output without cancelling. Useful for job-level gating or integration testing. | No | `true` |
+| `fallback` | Behavior when changed files cannot be determined (e.g., API failure). `run` allows the workflow to continue. `cancel` cancels the workflow run (respects the `cancel` input). | No | `run` |
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `should_run` | `true` if changed files match path filters, `false` otherwise |
+| `should_run` | `true` if the changed files match the workflow's path filters, `false` otherwise. Always set regardless of the `cancel` input. |
 
 ## How It Works
 
@@ -71,7 +121,9 @@ it shouldn't have triggered.
 2. Parses the `paths` or `paths-ignore` configuration for the current event type
 3. Queries the GitHub API for the list of changed files
 4. Matches the changed files against the path patterns
-5. If paths don't match: cancels the workflow run via the GitHub API
+5. Sets the `should_run` output
+6. If paths don't match and `cancel` is `true`: cancels the workflow run via the
+   GitHub API
 
 ## Supported Events
 
@@ -81,7 +133,9 @@ it shouldn't have triggered.
 
 ## Permissions
 
-The action needs the `actions: write` permission to cancel workflow runs:
+The action needs the `actions: write` permission to cancel workflow runs. If you
+use `cancel: false`, no special permissions are needed beyond the default token
+scope.
 
 ```yaml
 permissions:

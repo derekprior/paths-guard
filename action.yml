@@ -17,6 +17,13 @@ inputs:
       Explicit path to the workflow file (relative to repo root).
       If not set, automatically resolved from GITHUB_WORKFLOW_REF.
     required: false
+  cancel:
+    description: >
+      Whether to cancel the workflow run when path filters don't match.
+      Set to 'false' to only set the should_run output without cancelling.
+      Useful for job-level gating or integration testing.
+    required: false
+    default: "true"
   fallback:
     description: >
       Behavior when changed files cannot be determined (e.g., API failure).

@@ -32504,6 +32504,8 @@ async function run() {
         const token = core.getInput("token", { required: true });
         const explicitWorkflowFile = core.getInput("workflow-file");
         const fallback = core.getInput("fallback") || "run";
+        const cancelInput = core.getInput("cancel");
+        const shouldCancel = cancelInput !== "false";
         // 1. Resolve and read the workflow file
         const workflowRelPath = resolveWorkflowFilePath(explicitWorkflowFile);
         const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
@@ -32530,7 +32532,9 @@ async function run() {
                 `Falling back to '${fallback}' behavior.`);
             if (fallback === "cancel") {
                 core.setOutput("should_run", "false");
-                await cancelWorkflow(token);
+                if (shouldCancel) {
+                    await cancelWorkflow(token);
+                }
                 return;
             }
             // Default: allow the workflow to run
@@ -32549,10 +32553,16 @@ async function run() {
             core.info("Path filters matched. Workflow should proceed.");
         }
         else {
-            core.info("Path filters did NOT match any changed files. " +
-                "This workflow was likely triggered due to a GitHub diff " +
-                "computation issue. Cancelling workflow run.");
-            await cancelWorkflow(token);
+            if (shouldCancel) {
+                core.info("Path filters did NOT match any changed files. " +
+                    "This workflow was likely triggered due to a GitHub diff " +
+                    "computation issue. Cancelling workflow run.");
+                await cancelWorkflow(token);
+            }
+            else {
+                core.info("Path filters did NOT match any changed files. " +
+                    "Cancellation is disabled — workflow will continue.");
+            }
         }
     }
     catch (error) {

@@ -117,7 +117,7 @@ describe("run", () => {
   });
 
   describe("when paths do not match", () => {
-    it("sets should_run to false and cancels the workflow", async () => {
+    it("sets should_run to false and cancels the workflow by default", async () => {
       mockExtractPathFilters.mockReturnValue({
         paths: ["src/**"],
         pathsIgnore: undefined,
@@ -133,6 +133,84 @@ describe("run", () => {
         repo: "test-repo",
         run_id: 12345,
       });
+    });
+
+    it("sets should_run to false but does NOT cancel when cancel input is false", async () => {
+      mockGetInput.mockImplementation((name: string) => {
+        switch (name) {
+          case "token":
+            return "fake-token";
+          case "cancel":
+            return "false";
+          case "fallback":
+            return "run";
+          default:
+            return "";
+        }
+      });
+      mockExtractPathFilters.mockReturnValue({
+        paths: ["src/**"],
+        pathsIgnore: undefined,
+      });
+      mockGetChangedFiles.mockResolvedValue(["docs/readme.md"]);
+      mockMatchPaths.mockReturnValue(false);
+
+      await run();
+
+      expect(mockSetOutput).toHaveBeenCalledWith("should_run", "false");
+      expect(mockCancelWorkflow).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("cancel input", () => {
+    it("defaults to cancelling when cancel input is not set", async () => {
+      mockGetInput.mockImplementation((name: string) => {
+        switch (name) {
+          case "token":
+            return "fake-token";
+          case "cancel":
+            return "";
+          case "fallback":
+            return "run";
+          default:
+            return "";
+        }
+      });
+      mockExtractPathFilters.mockReturnValue({
+        paths: ["src/**"],
+        pathsIgnore: undefined,
+      });
+      mockGetChangedFiles.mockResolvedValue(["docs/readme.md"]);
+      mockMatchPaths.mockReturnValue(false);
+
+      await run();
+
+      expect(mockCancelWorkflow).toHaveBeenCalled();
+    });
+
+    it("does not cancel when cancel is false even on fallback=cancel", async () => {
+      mockGetInput.mockImplementation((name: string) => {
+        switch (name) {
+          case "token":
+            return "fake-token";
+          case "cancel":
+            return "false";
+          case "fallback":
+            return "cancel";
+          default:
+            return "";
+        }
+      });
+      mockExtractPathFilters.mockReturnValue({
+        paths: ["src/**"],
+        pathsIgnore: undefined,
+      });
+      mockGetChangedFiles.mockRejectedValue(new Error("API error"));
+
+      await run();
+
+      expect(mockSetOutput).toHaveBeenCalledWith("should_run", "false");
+      expect(mockCancelWorkflow).not.toHaveBeenCalled();
     });
   });
 
