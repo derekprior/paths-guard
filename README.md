@@ -11,12 +11,10 @@ When GitHub experiences issues computing diffs, workflows with `paths` or
 runtime safety net — it reads the path configuration directly from your workflow
 file and re-validates it against the actual changed files.
 
-Unlike [`dorny/paths-filter`][paths-filter], this action requires **zero
-configuration duplication**. It reads the path patterns directly from your
-workflow's trigger configuration.
+This action requires **zero configuration duplication** — it reads the path
+patterns directly from your workflow's trigger configuration.
 
 [gh-docs]: https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#running-your-workflow-based-on-files-changed-in-a-pull-request
-[paths-filter]: https://github.com/dorny/paths-filter
 
 ## Usage
 
