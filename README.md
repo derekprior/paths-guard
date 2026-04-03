@@ -148,6 +148,34 @@ should be rare — the API handles the 99.99% common case cheaply.
 - `pull_request`
 - `pull_request_target`
 
+## Prerequisites
+
+This action requires `actions/checkout` to have run first. The default
+configuration works — but if you've customized your checkout step, note:
+
+- **`persist-credentials`** must be `true` (the default). The git fallback
+  needs credentials to fetch the base commit. If set to `false`, the API
+  path will still work, but the fallback will fail with a helpful error
+  message suggesting the fix.
+
+```yaml
+# ✅ Works (default settings)
+- uses: actions/checkout@v4
+
+# ✅ Works (explicit)
+- uses: actions/checkout@v4
+  with:
+    persist-credentials: true
+
+# ⚠️ API path works, but git fallback will fail
+- uses: actions/checkout@v4
+  with:
+    persist-credentials: false
+```
+
+`fetch-depth` does not matter — the action fetches the base commit itself with
+`--depth=1` when the git fallback is needed.
+
 ## Permissions
 
 The action needs the `actions: write` permission to cancel workflow runs. If you

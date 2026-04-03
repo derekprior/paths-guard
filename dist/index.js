@@ -32527,6 +32527,15 @@ const child_process_1 = __nccwpck_require__(5317);
 const util_1 = __nccwpck_require__(9023);
 const core = __importStar(__nccwpck_require__(7484));
 const execFile = (0, util_1.promisify)(child_process_1.execFile);
+const AUTH_ERROR_PATTERNS = [
+    /could not read Username/i,
+    /Authentication failed/i,
+    /terminal prompts disabled/i,
+    /could not resolve host/i,
+];
+function isAuthError(message) {
+    return AUTH_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
 /**
  * Gets the list of changed files between two commits using local git
  * operations. Fetches the base commit (depth=1) to ensure it's available
@@ -32540,6 +32549,11 @@ async function getChangedFilesFromGit(baseSha, headSha) {
     }
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (isAuthError(message)) {
+            throw new Error(`Git fetch failed due to missing credentials. ` +
+                `Ensure actions/checkout is configured with persist-credentials: true ` +
+                `(the default). Original error: ${message}`);
+        }
         throw new Error(`Git fetch of base commit failed: ${message}`);
     }
     try {

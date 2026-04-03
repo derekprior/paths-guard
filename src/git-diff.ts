@@ -4,6 +4,17 @@ import * as core from "@actions/core";
 
 const execFile = promisify(execFileCb);
 
+const AUTH_ERROR_PATTERNS = [
+  /could not read Username/i,
+  /Authentication failed/i,
+  /terminal prompts disabled/i,
+  /could not resolve host/i,
+];
+
+function isAuthError(message: string): boolean {
+  return AUTH_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
 /**
  * Gets the list of changed files between two commits using local git
  * operations. Fetches the base commit (depth=1) to ensure it's available
@@ -23,6 +34,13 @@ export async function getChangedFilesFromGit(
     await execFile("git", ["fetch", "origin", baseSha, "--depth=1"], { cwd });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (isAuthError(message)) {
+      throw new Error(
+        `Git fetch failed due to missing credentials. ` +
+          `Ensure actions/checkout is configured with persist-credentials: true ` +
+          `(the default). Original error: ${message}`
+      );
+    }
     throw new Error(`Git fetch of base commit failed: ${message}`);
   }
 

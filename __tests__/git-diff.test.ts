@@ -150,4 +150,20 @@ describe("getChangedFilesFromGit", () => {
       getChangedFilesFromGit("aaa111", "bbb222")
     ).rejects.toThrow(/diff/i);
   });
+
+  it("provides a helpful message when fetch fails due to auth", async () => {
+    mockExecFileFailure("fatal: could not read Username for 'https://github.com': terminal prompts disabled");
+
+    await expect(
+      getChangedFilesFromGit("aaa111", "bbb222")
+    ).rejects.toThrow(/persist-credentials/i);
+  });
+
+  it("provides a helpful message for 'Authentication failed' errors", async () => {
+    mockExecFileFailure("fatal: Authentication failed for 'https://github.com/owner/repo'");
+
+    await expect(
+      getChangedFilesFromGit("aaa111", "bbb222")
+    ).rejects.toThrow(/persist-credentials/i);
+  });
 });
