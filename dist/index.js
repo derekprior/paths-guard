@@ -32412,7 +32412,7 @@ exports.getChangedFiles = getChangedFiles;
 const github_1 = __nccwpck_require__(3228);
 const core = __importStar(__nccwpck_require__(7484));
 const git_diff_1 = __nccwpck_require__(1467);
-const NULL_SHA = "0000000000000000000000000000000000000000";
+const NULL_SHA_PATTERN = /^0+$/;
 /**
  * Gets the list of changed files for the current workflow run.
  * Tries the GitHub API first (fast, cheap). If the API fails, falls back
@@ -32435,7 +32435,7 @@ async function getChangedFiles(token) {
 async function getChangedFilesForPush(octokit, owner, repo) {
     const before = github_1.context.payload.before;
     const after = github_1.context.payload.after ?? github_1.context.sha;
-    if (!before || before === NULL_SHA) {
+    if (!before || NULL_SHA_PATTERN.test(before)) {
         throw new Error("Cannot determine changed files: the 'before' commit SHA is missing " +
             "or this is the initial push to a new branch. paths-guard requires " +
             "a valid base commit to compare against.");

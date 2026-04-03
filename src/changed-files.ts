@@ -2,7 +2,7 @@ import { getOctokit, context } from "@actions/github";
 import * as core from "@actions/core";
 import { getChangedFilesFromGit } from "./git-diff";
 
-const NULL_SHA = "0000000000000000000000000000000000000000";
+const NULL_SHA_PATTERN = /^0+$/;
 
 /**
  * Gets the list of changed files for the current workflow run.
@@ -35,7 +35,7 @@ async function getChangedFilesForPush(
   const before = context.payload.before as string | undefined;
   const after = (context.payload.after as string | undefined) ?? context.sha;
 
-  if (!before || before === NULL_SHA) {
+  if (!before || NULL_SHA_PATTERN.test(before)) {
     throw new Error(
       "Cannot determine changed files: the 'before' commit SHA is missing " +
         "or this is the initial push to a new branch. paths-guard requires " +

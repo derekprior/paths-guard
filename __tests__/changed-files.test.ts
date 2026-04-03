@@ -87,9 +87,19 @@ describe("getChangedFiles", () => {
       expect(files).toEqual([]);
     });
 
-    it("throws when before sha is missing", async () => {
+    it("throws when before sha is null (SHA-1)", async () => {
       Object.assign(context, {
         payload: { before: "0000000000000000000000000000000000000000", after: "bbb222" },
+      });
+
+      await expect(getChangedFiles("fake-token")).rejects.toThrow(
+        /cannot determine/i
+      );
+    });
+
+    it("throws when before sha is null (SHA-256)", async () => {
+      Object.assign(context, {
+        payload: { before: "0000000000000000000000000000000000000000000000000000000000000000", after: "bbb222" },
       });
 
       await expect(getChangedFiles("fake-token")).rejects.toThrow(
