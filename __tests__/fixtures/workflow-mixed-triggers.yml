@@ -1,0 +1,13 @@
+on:
+  push:
+    paths:
+      - "src/**"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4

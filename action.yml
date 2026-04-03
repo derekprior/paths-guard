@@ -1,0 +1,40 @@
+name: "Paths Guard"
+description: >
+  Re-checks workflow path filters at runtime. Cancels the workflow if the
+  changed files don't match the paths configuration — a safety net for when
+  GitHub can't compute the diff at trigger time.
+author: "Derek Prior"
+
+inputs:
+  token:
+    description: >
+      GitHub token used to query changed files and cancel the workflow run.
+      Requires `actions: write` permission.
+    required: true
+    default: ${{ github.token }}
+  workflow-file:
+    description: >
+      Explicit path to the workflow file (relative to repo root).
+      If not set, automatically resolved from GITHUB_WORKFLOW_REF.
+    required: false
+  fallback:
+    description: >
+      Behavior when changed files cannot be determined (e.g., API failure).
+      'run' (default) allows the workflow to continue.
+      'cancel' cancels the workflow run.
+    required: false
+    default: "run"
+
+outputs:
+  should_run:
+    description: >
+      'true' if the changed files match the workflow's path filters,
+      'false' otherwise.
+
+runs:
+  using: "node20"
+  main: "dist/index.js"
+
+branding:
+  icon: "shield"
+  color: "blue"
