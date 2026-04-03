@@ -1,10 +1,13 @@
 import { getOctokit, context } from "@actions/github";
+import * as core from "@actions/core";
+import { getChangedFilesFromGit } from "./git-diff";
 
 const NULL_SHA = "0000000000000000000000000000000000000000";
 
 /**
- * Gets the list of changed files for the current workflow run using the
- * GitHub API. Supports push and pull_request events.
+ * Gets the list of changed files for the current workflow run.
+ * Tries the GitHub API first (fast, cheap). If the API fails, falls back
+ * to local git diff (resilient, but requires fetching the base commit).
  */
 export async function getChangedFiles(token: string): Promise<string[]> {
   const octokit = getOctokit(token);
@@ -30,7 +33,7 @@ async function getChangedFilesForPush(
   repo: string
 ): Promise<string[]> {
   const before = context.payload.before as string | undefined;
-  const after = context.payload.after as string | undefined;
+  const after = (context.payload.after as string | undefined) ?? context.sha;
 
   if (!before || before === NULL_SHA) {
     throw new Error(
@@ -40,13 +43,18 @@ async function getChangedFilesForPush(
     );
   }
 
-  const response = await octokit.rest.repos.compareCommitsWithBasehead({
-    owner,
-    repo,
-    basehead: `${before}...${after ?? context.sha}`,
-  });
-
-  return (response.data.files ?? []).map((f) => f.filename);
+  try {
+    const response = await octokit.rest.repos.compareCommitsWithBasehead({
+      owner,
+      repo,
+      basehead: `${before}...${after}`,
+    });
+    return (response.data.files ?? []).map((f) => f.filename);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning(`GitHub API compare failed: ${message}. Trying local git diff...`);
+    return getChangedFilesFromGit(before, after);
+  }
 }
 
 async function getChangedFilesForPR(
@@ -54,20 +62,33 @@ async function getChangedFilesForPR(
   owner: string,
   repo: string
 ): Promise<string[]> {
-  const prNumber = context.payload.pull_request?.number;
+  const pr = context.payload.pull_request;
 
-  if (!prNumber) {
+  if (!pr?.number) {
     throw new Error(
       "Cannot determine changed files: pull request number not found in event payload."
     );
   }
 
-  const response = await octokit.rest.pulls.listFiles({
-    owner,
-    repo,
-    pull_number: prNumber,
-    per_page: 100,
-  });
+  try {
+    const response = await octokit.rest.pulls.listFiles({
+      owner,
+      repo,
+      pull_number: pr.number,
+      per_page: 100,
+    });
+    return response.data.map((f) => f.filename);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning(`GitHub API PR files failed: ${message}. Trying local git diff...`);
 
-  return response.data.map((f) => f.filename);
+    const baseSha = pr.base?.sha;
+    const headSha = pr.head?.sha;
+    if (!baseSha || !headSha) {
+      throw new Error(
+        "Cannot fall back to git diff: PR base/head SHA not found in event payload."
+      );
+    }
+    return getChangedFilesFromGit(baseSha, headSha);
+  }
 }

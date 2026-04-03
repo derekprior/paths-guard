@@ -32370,17 +32370,53 @@ function wrappy (fn, cb) {
 /***/ }),
 
 /***/ 5901:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getChangedFiles = getChangedFiles;
 const github_1 = __nccwpck_require__(3228);
+const core = __importStar(__nccwpck_require__(7484));
+const git_diff_1 = __nccwpck_require__(1467);
 const NULL_SHA = "0000000000000000000000000000000000000000";
 /**
- * Gets the list of changed files for the current workflow run using the
- * GitHub API. Supports push and pull_request events.
+ * Gets the list of changed files for the current workflow run.
+ * Tries the GitHub API first (fast, cheap). If the API fails, falls back
+ * to local git diff (resilient, but requires fetching the base commit).
  */
 async function getChangedFiles(token) {
     const octokit = (0, github_1.getOctokit)(token);
@@ -32398,31 +32434,122 @@ async function getChangedFiles(token) {
 }
 async function getChangedFilesForPush(octokit, owner, repo) {
     const before = github_1.context.payload.before;
-    const after = github_1.context.payload.after;
+    const after = github_1.context.payload.after ?? github_1.context.sha;
     if (!before || before === NULL_SHA) {
         throw new Error("Cannot determine changed files: the 'before' commit SHA is missing " +
             "or this is the initial push to a new branch. paths-guard requires " +
             "a valid base commit to compare against.");
     }
-    const response = await octokit.rest.repos.compareCommitsWithBasehead({
-        owner,
-        repo,
-        basehead: `${before}...${after ?? github_1.context.sha}`,
-    });
-    return (response.data.files ?? []).map((f) => f.filename);
+    try {
+        const response = await octokit.rest.repos.compareCommitsWithBasehead({
+            owner,
+            repo,
+            basehead: `${before}...${after}`,
+        });
+        return (response.data.files ?? []).map((f) => f.filename);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        core.warning(`GitHub API compare failed: ${message}. Trying local git diff...`);
+        return (0, git_diff_1.getChangedFilesFromGit)(before, after);
+    }
 }
 async function getChangedFilesForPR(octokit, owner, repo) {
-    const prNumber = github_1.context.payload.pull_request?.number;
-    if (!prNumber) {
+    const pr = github_1.context.payload.pull_request;
+    if (!pr?.number) {
         throw new Error("Cannot determine changed files: pull request number not found in event payload.");
     }
-    const response = await octokit.rest.pulls.listFiles({
-        owner,
-        repo,
-        pull_number: prNumber,
-        per_page: 100,
-    });
-    return response.data.map((f) => f.filename);
+    try {
+        const response = await octokit.rest.pulls.listFiles({
+            owner,
+            repo,
+            pull_number: pr.number,
+            per_page: 100,
+        });
+        return response.data.map((f) => f.filename);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        core.warning(`GitHub API PR files failed: ${message}. Trying local git diff...`);
+        const baseSha = pr.base?.sha;
+        const headSha = pr.head?.sha;
+        if (!baseSha || !headSha) {
+            throw new Error("Cannot fall back to git diff: PR base/head SHA not found in event payload.");
+        }
+        return (0, git_diff_1.getChangedFilesFromGit)(baseSha, headSha);
+    }
+}
+
+
+/***/ }),
+
+/***/ 1467:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getChangedFilesFromGit = getChangedFilesFromGit;
+const child_process_1 = __nccwpck_require__(5317);
+const util_1 = __nccwpck_require__(9023);
+const core = __importStar(__nccwpck_require__(7484));
+const execFile = (0, util_1.promisify)(child_process_1.execFile);
+/**
+ * Gets the list of changed files between two commits using local git
+ * operations. Fetches the base commit (depth=1) to ensure it's available
+ * in shallow clones, then runs git diff.
+ */
+async function getChangedFilesFromGit(baseSha, headSha) {
+    const cwd = process.env.GITHUB_WORKSPACE || process.cwd();
+    core.info(`Falling back to local git diff: fetching base commit ${baseSha}...`);
+    try {
+        await execFile("git", ["fetch", "origin", baseSha, "--depth=1"], { cwd });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Git fetch of base commit failed: ${message}`);
+    }
+    try {
+        const { stdout } = await execFile("git", ["diff", "--name-only", `${baseSha}...${headSha}`], { cwd });
+        return stdout.split("\n").filter((line) => line.length > 0);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Git diff failed: ${message}`);
+    }
 }
 
 

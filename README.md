@@ -117,11 +117,30 @@ GitHub treats skipped checks as passing by default.
 
 1. Reads the executing workflow's YAML file from the checked-out repository
 2. Parses the `paths` or `paths-ignore` configuration for the current event type
-3. Queries the GitHub API for the list of changed files
+3. Gets the list of changed files (see below)
 4. Matches the changed files against the path patterns
 5. Sets the `should_run` output
 6. If paths don't match and `cancel` is `true`: cancels the workflow run via the
    GitHub API
+
+### Changed file detection
+
+The action uses a two-tier strategy to determine which files changed:
+
+1. **GitHub API (primary)**: Queries the compare API (for pushes) or the pull
+   request files API (for PRs). This is fast and lightweight — no extra git
+   operations needed.
+
+2. **Local git diff (fallback)**: If the API call fails, the action falls back
+   to computing the diff locally. It fetches the base commit with
+   `git fetch --depth=1` and runs `git diff --name-only` to determine changed
+   files. This is resilient even when GitHub's API is degraded — which is
+   exactly the scenario this action is designed to handle.
+
+**Trade-offs**: The git fallback fetches one additional commit and its tree
+from the remote. For very large, active repositories this could add meaningful
+overhead. In practice, the fallback only runs when the API is unavailable, which
+should be rare — the API handles the 99.99% common case cheaply.
 
 ## Supported Events
 

@@ -12,7 +12,19 @@ vi.mock("@actions/github", () => ({
   },
 }));
 
+// Mock @actions/core for logging
+vi.mock("@actions/core", () => ({
+  info: vi.fn(),
+  warning: vi.fn(),
+}));
+
+// Mock git-diff module
+vi.mock("../src/git-diff", () => ({
+  getChangedFilesFromGit: vi.fn(),
+}));
+
 import { getOctokit, context } from "@actions/github";
+import { getChangedFilesFromGit } from "../src/git-diff";
 
 const mockOctokit = {
   rest: {
@@ -24,6 +36,8 @@ const mockOctokit = {
     },
   },
 };
+
+const mockGetChangedFilesFromGit = getChangedFilesFromGit as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -138,6 +152,71 @@ describe("getChangedFiles", () => {
 
       await expect(getChangedFiles("fake-token")).rejects.toThrow(
         /unsupported.*schedule/i
+      );
+    });
+  });
+
+  describe("git fallback", () => {
+    beforeEach(() => {
+      Object.assign(context, {
+        eventName: "push",
+        payload: {
+          before: "aaa111",
+          after: "bbb222",
+        },
+      });
+    });
+
+    it("falls back to git when API fails for push", async () => {
+      mockOctokit.rest.repos.compareCommitsWithBasehead.mockRejectedValue(
+        new Error("API rate limit")
+      );
+      mockGetChangedFilesFromGit.mockResolvedValue(["src/index.ts"]);
+
+      const files = await getChangedFiles("fake-token");
+
+      expect(files).toEqual(["src/index.ts"]);
+      expect(mockGetChangedFilesFromGit).toHaveBeenCalledWith(
+        "aaa111",
+        "bbb222"
+      );
+    });
+
+    it("falls back to git when API fails for PR", async () => {
+      Object.assign(context, {
+        eventName: "pull_request",
+        payload: {
+          pull_request: {
+            number: 42,
+            base: { sha: "base111" },
+            head: { sha: "head222" },
+          },
+        },
+      });
+      mockOctokit.rest.pulls.listFiles.mockRejectedValue(
+        new Error("Server error")
+      );
+      mockGetChangedFilesFromGit.mockResolvedValue(["src/app.ts"]);
+
+      const files = await getChangedFiles("fake-token");
+
+      expect(files).toEqual(["src/app.ts"]);
+      expect(mockGetChangedFilesFromGit).toHaveBeenCalledWith(
+        "base111",
+        "head222"
+      );
+    });
+
+    it("throws when both API and git fallback fail", async () => {
+      mockOctokit.rest.repos.compareCommitsWithBasehead.mockRejectedValue(
+        new Error("API down")
+      );
+      mockGetChangedFilesFromGit.mockRejectedValue(
+        new Error("git fetch failed")
+      );
+
+      await expect(getChangedFiles("fake-token")).rejects.toThrow(
+        /git fetch failed/i
       );
     });
   });
